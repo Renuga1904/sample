@@ -33,6 +33,7 @@ export default function App() {
       /* IMAGE → EXCEL (Tamil OCR) */
       if (fromType === "image" && toType === "excel") {
         const img = await loadImageToCanvas(file);
+        preprocess(img.canvas);
 
         const result = await Tesseract.recognize(img.canvas, "tam", {
           logger: (m) => {
@@ -63,6 +64,7 @@ export default function App() {
           canvas.height = viewport.height;
 
           await page.render({ canvasContext: ctx, viewport }).promise;
+          preprocess(canvas);
 
           const result = await Tesseract.recognize(canvas, "tam", {
             logger: (m) => {
