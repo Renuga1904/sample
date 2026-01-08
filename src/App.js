@@ -4,7 +4,8 @@ import * as XLSX from "xlsx";
 import Tesseract from "tesseract.js";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf";
 import mammoth from "mammoth";
-import './App.css'
+import "./App.css";
+
 Modal.setAppElement("#root");
 
 GlobalWorkerOptions.workerSrc =
@@ -20,6 +21,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  // 🔹 NEW: OCR Language State
+  const [ocrLang, setOcrLang] = useState("tam");
+
   const handleConvert = async () => {
     if (!file || !fromType || !toType) {
       alert("Select all fields");
@@ -30,12 +34,12 @@ export default function App() {
     setProgress(0);
 
     try {
-      /* IMAGE → EXCEL (Tamil OCR) */
+      /* IMAGE → EXCEL */
       if (fromType === "image" && toType === "excel") {
         const img = await loadImageToCanvas(file);
         preprocess(img.canvas);
 
-        const result = await Tesseract.recognize(img.canvas, "tam", {
+        const result = await Tesseract.recognize(img.canvas, ocrLang, {
           logger: (m) => {
             if (m.status === "recognizing text") {
               setProgress(m.progress);
@@ -46,7 +50,7 @@ export default function App() {
         exportToExcel(result.data.text);
       }
 
-      /* PDF → EXCEL (Tamil OCR) */
+      /* PDF → EXCEL */
       if (fromType === "pdf" && toType === "excel") {
         const buffer = await file.arrayBuffer();
         const pdf = await getDocument({ data: buffer }).promise;
@@ -55,7 +59,7 @@ export default function App() {
 
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale: 3 }); // HIGH DPI
+          const viewport = page.getViewport({ scale: 3 });
 
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d");
@@ -66,7 +70,7 @@ export default function App() {
           await page.render({ canvasContext: ctx, viewport }).promise;
           preprocess(canvas);
 
-          const result = await Tesseract.recognize(canvas, "tam", {
+          const result = await Tesseract.recognize(canvas, ocrLang, {
             logger: (m) => {
               if (m.status === "recognizing text") {
                 setProgress((i - 1 + m.progress) / pdf.numPages);
@@ -105,6 +109,7 @@ export default function App() {
           Open Converter
         </button>
       )}
+
       <Modal
         isOpen={open}
         onRequestClose={() => setOpen(false)}
@@ -112,11 +117,8 @@ export default function App() {
         overlayClassName="modal-backdrop fade show"
       >
         <div className="modal-content p-4 rounded-4 shadow-lg">
-
-          {/* Header */}
           <h3 className="text-center fw-bold mb-4">Extractor</h3>
 
-          {/* Form */}
           <div className="row g-3 mb-3">
             <div className="col-md-6">
               <label className="form-label fw-semibold">From</label>
@@ -127,7 +129,9 @@ export default function App() {
               >
                 <option value="">Select format</option>
                 {formats.map((f) => (
-                  <option key={f} value={f}>{f}</option>
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
                 ))}
               </select>
             </div>
@@ -149,18 +153,26 @@ export default function App() {
               <input
                 type="file"
                 className="form-control"
-                onChange={(e) => setFile(e.target.files[0])}
+                onChange={(e) => {
+                  const f = e.target.files[0];
+                  setFile(f);
+
+                  // 🔹 AUTO English / Tamil switch
+                  if (f && f.name.match(/eng|english/i)) {
+                    setOcrLang("eng");
+                  } else {
+                    setOcrLang("tam");
+                  }
+                }}
               />
             </div>
           </div>
 
-          {/* Progress */}
           {loading && (
             <div className="mb-3">
               <div className="progress">
                 <div
                   className="progress-bar progress-bar-striped progress-bar-animated"
-                  role="progressbar"
                   style={{ width: `${progress * 100}%` }}
                 >
                   {(progress * 100).toFixed(1)}%
@@ -169,7 +181,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Buttons */}
           <div className="d-flex justify-content-between mt-4">
             <button
               onClick={handleConvert}
@@ -186,14 +197,13 @@ export default function App() {
               Close
             </button>
           </div>
-
         </div>
       </Modal>
     </div>
-
   );
 }
 
+/* ---------------- HELPERS ---------------- */
 
 function loadImageToCanvas(file) {
   return new Promise((resolve) => {
@@ -207,10 +217,8 @@ function loadImageToCanvas(file) {
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
-
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
-
       resolve({ canvas });
     };
   });
@@ -238,7 +246,6 @@ function exportToExcel(text) {
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Tamil_OCR");
-
-  XLSX.writeFile(wb, "tamil_ocr.xlsx");
+  XLSX.utils.book_append_sheet(wb, ws, "OCR_Text");
+  XLSX.writeFile(wb, "ocr_output.xlsx");
 }
